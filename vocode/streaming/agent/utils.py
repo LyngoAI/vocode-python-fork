@@ -51,7 +51,8 @@ async def collate_response_async(
             # If the previous token didn't have leading whitespace and the current does:
             elif not prev_starts_with_whitespace and token_starts_with_whitespace:
                 # Assume last word in buffer is an email address
-                buffer = buffer.replace(buffer.split()[-1], convert_email_characters(buffer.split()[-1]))
+                potential_email_text = buffer.split()[-1]
+                buffer = buffer.replace(potential_email_text, convert_email_characters(potential_email_text))
                 # If sentence ends after potential email conversion:
                 if bool(re.findall(sentence_endings_pattern, buffer)):
                     yield buffer.strip()
@@ -67,6 +68,7 @@ async def collate_response_async(
                 else sentence_endings_pattern,
                 token,
             ):
+                # Only allow buffers to return if the current token has leading whitespace to avoid streaming partial emails.
                 if not ends_with_money and token_starts_with_whitespace:
                     to_return = buffer.strip()
                     if to_return:
@@ -77,7 +79,8 @@ async def collate_response_async(
         elif isinstance(token, FunctionFragment):
             function_name_buffer += token.name
             function_args_buffer += token.arguments
-            
+    
+    # For when the last token had no leading whitespace (last loop iteration needs email conversion).
     if not prev_starts_with_whitespace:
         potential_email_text = buffer.split()[-1]
         buffer = buffer.replace(potential_email_text, convert_email_characters(potential_email_text))
@@ -95,6 +98,7 @@ def convert_email_characters(message: str):
     if not re.findall(email_regex, message):
         return message
     
+    # Retain any trailing dots.
     last_char_equals_dot = message.endswith(".")
     message = message.removesuffix(".")
 
@@ -106,6 +110,7 @@ def convert_email_characters(message: str):
     for char in message:
         converted_message += special_char_dict.get(char, char)
     
+    # If email had a trailing dot, add it back.
     if last_char_equals_dot:
         converted_message += "."
             
