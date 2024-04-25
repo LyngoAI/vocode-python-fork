@@ -51,11 +51,8 @@ async def collate_response_async(
             # If the previous token didn't have leading whitespace and the current does:
             elif not prev_starts_with_whitespace and token_starts_with_whitespace:
                 # Assume last word in buffer is an email address
-                potential_email_text = buffer.split()[-1]
-                converted_email_text = convert_email_characters(potential_email_text)
-                # # If it was an email
-                # if converted_email_text != potential_email_text:
-                #     buffer = buffer.replace(potential_email_text, converted_email_text)
+                buffer = buffer.replace(buffer.split()[-1], convert_email_characters(buffer.split()[-1]))
+                # If sentence ends after potential email conversion:
                 if bool(re.findall(sentence_endings_pattern, buffer)):
                     yield buffer.strip()
                     buffer = ""
@@ -94,6 +91,7 @@ async def collate_response_async(
         
 def convert_email_characters(message: str):
     email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    # If no email found, return input message.
     if not re.findall(email_regex, message):
         return message
     
