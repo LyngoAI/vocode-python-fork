@@ -37,15 +37,31 @@ async def collate_response_async(
     function_name_buffer = ""
     function_args_buffer = ""
     prev_ends_with_money = False
+    prev_starts_with_whitespace = True
+    
     async for token in gen:
         if not token:
             continue
         if isinstance(token, str):
-            if prev_ends_with_money and token.startswith(" "):
+            token_starts_with_whitespace = token.startswith(" ")
+            
+            if prev_ends_with_money and token_starts_with_whitespace:
                 yield buffer.strip()
                 buffer = ""
+            # If the previous token didn't have leading whitespace and the current does:
+            elif not prev_starts_with_whitespace and token_starts_with_whitespace:
+                # Assume last word in buffer is an email address
+                potential_email_text = buffer.split()[-1]
+                converted_email_text = convert_email_characters(potential_email_text)
+                # # If it was an email
+                # if converted_email_text != potential_email_text:
+                #     buffer = buffer.replace(potential_email_text, converted_email_text)
+                if bool(re.findall(sentence_endings_pattern, buffer)):
+                    yield buffer.strip()
+                    buffer = ""
 
             buffer += token
+                
             possible_list_item = bool(re.match(r"^\d+[ .]", buffer))
             ends_with_money = bool(re.findall(r"\$\d+.$", buffer))
             if re.findall(
@@ -54,20 +70,49 @@ async def collate_response_async(
                 else sentence_endings_pattern,
                 token,
             ):
-                if not ends_with_money:
+                if not ends_with_money and token_starts_with_whitespace:
                     to_return = buffer.strip()
                     if to_return:
                         yield to_return
                     buffer = ""
             prev_ends_with_money = ends_with_money
+            prev_starts_with_whitespace = token_starts_with_whitespace
         elif isinstance(token, FunctionFragment):
             function_name_buffer += token.name
             function_args_buffer += token.arguments
+            
+    if not prev_starts_with_whitespace:
+        potential_email_text = buffer.split()[-1]
+        buffer = buffer.replace(potential_email_text, convert_email_characters(potential_email_text))
+        
     to_return = buffer.strip()
     if to_return:
         yield to_return
     if function_name_buffer and get_functions:
         yield FunctionCall(name=function_name_buffer, arguments=function_args_buffer)
+        
+        
+def convert_email_characters(message: str):
+    email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    if not re.findall(email_regex, message):
+        return message
+    
+    last_char_equals_dot = message.endswith(".")
+    message = message.removesuffix(".")
+
+    special_char_dict = {'-' : " dash ", 
+                        '_' : " underscore ", 
+                        '.' : " dot ",
+                        '@' : " at "}
+    converted_message = ""
+    for char in message:
+        converted_message += special_char_dict.get(char, char)
+    
+    if last_char_equals_dot:
+        converted_message += "."
+            
+    return converted_message
+
 
 
 async def openai_get_tokens(gen) -> AsyncGenerator[Union[str, FunctionFragment], None]:
