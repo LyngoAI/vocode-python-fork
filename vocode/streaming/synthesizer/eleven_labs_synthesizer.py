@@ -57,6 +57,30 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         bot_sentiment: Optional[BotSentiment] = None,
     ) -> SynthesisResult:
         
+        # Returns input string with email portions spelt out in caps and punctuation replaced with their respective words.
+        def spell_email_addresses(message: str):
+            # Retain any trailing dots.
+            last_char_equals_dot = message.endswith(".")
+            message = message.removesuffix(".")
+
+            special_char_dict = {'-' : "dash", 
+                                '_' : "underscore", 
+                                '.' : "dot",
+                                '@' : "at"}
+            converted_message = ""
+            for char in message:
+                # Replace it if it exists in the dict. If not, make it upper case and surround in brackets.
+                converted_message += " " + special_char_dict.get(char, "[" + char.upper() + "]")
+            
+            # Remove placed leading whitespace.git push origin HEAD --force
+            converted_message = converted_message.removeprefix(" ")
+            # If email had a trailing dot, add it back.
+            if last_char_equals_dot:
+                converted_message += "."
+                    
+            return converted_message
+        
+        
         # Initialize voice object
         voice = self.elevenlabs.Voice(voice_id=self.voice_id)
         
@@ -75,29 +99,18 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         if self.optimize_streaming_latency:
             url += f"?optimize_streaming_latency={self.optimize_streaming_latency}"
 
+
+        # Email checks
         email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'   
+        temp_message = message.text
+        # Loops over all email match objects found.
+        for email_match in re.finditer(email_regex, temp_message):
+            # Get email string.
+            email = temp_message[email_match.start():email_match.end()]
+            # Replace the portion of the message at the match indices with the converted email address.
+            message.text = temp_message[:email_match.start()] + spell_email_addresses(email) + temp_message[email_match.end():]
 
-        # # Split the message by whitespace to keep the structure
-        message_parts = re.split(r'(\s+)', message.text)                   
-        # message_parts = message.text.split()
 
-        def email_text_convert(message):
-            special_char_dict = {'-' : " dash ", 
-                                '_' : " underscore ", 
-                                '.' : " dot ",
-                                '@' : " at "}
-            
-            converted_message = ""
-            for char in message:
-                converted_message += special_char_dict.get(char, char)
-            
-            return converted_message
-
-        for i, part in enumerate(message_parts):
-            if re.match(email_regex, part) is not None:
-                message_parts[i] = email_text_convert(message_parts[i])
-        message.text = "".join(message_parts)
-                            
         # Prepare request headers
         headers = {"xi-api-key": self.api_key}
         
