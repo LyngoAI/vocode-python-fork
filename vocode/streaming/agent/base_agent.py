@@ -287,8 +287,13 @@ class RespondAgent(BaseAgent[AgentConfigType]):
                     conf_score = "MEDIUM"
                 else:
                     conf_score = "HIGH"
+                # Removing this for now as its causing some problems
+                # self.transcript.add_human_message(
+                #     text=transcription.message + f" (conf: {conf_score})",
+                #     conversation_id=agent_input.conversation_id,
+                # )
                 self.transcript.add_human_message(
-                    text=transcription.message + f" (conf: {conf_score})",
+                    text=transcription.message,
                     conversation_id=agent_input.conversation_id,
                 )
             elif isinstance(agent_input, ActionResultAgentInput):
