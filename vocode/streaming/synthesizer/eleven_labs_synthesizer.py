@@ -69,11 +69,11 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
                                 '@' : "at"}
             converted_message = ""
             for char in message:
-                # Replace it if it exists in the dict. If not, make it upper case and surround in brackets.
-                converted_message += " " + special_char_dict.get(char, "[" + char.upper() + "]")
+                # Replace it if it exists in the dict. If not, make it upper case, surround in brackets, and seperate by commas.
+                converted_message += " [" + special_char_dict.get(char, char.upper()) + "],"
             
-            # Remove placed leading whitespace.git push origin HEAD --force
-            converted_message = converted_message.removeprefix(" ")
+            # Remove placed leading whitespace and trailing comma.
+            converted_message = converted_message.removeprefix(" ").removesuffix(",")
             # If email had a trailing dot, add it back.
             if last_char_equals_dot:
                 converted_message += "."
@@ -101,14 +101,12 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
 
 
         # Email checks
+        message_with_spelt_email = message.text
         email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'   
-        temp_message = message.text
-        # Loops over all email match objects found.
-        for email_match in re.finditer(email_regex, temp_message):
-            # Get email string.
-            email = temp_message[email_match.start():email_match.end()]
+        # Loops over all email match objects found. Should not occur but problems arise if multiple emails share the same message.
+        for email_match in re.finditer(email_regex, message_with_spelt_email):
             # Replace the portion of the message at the match indices with the converted email address.
-            message.text = temp_message[:email_match.start()] + spell_email_addresses(email) + temp_message[email_match.end():]
+            message_with_spelt_email = message_with_spelt_email[:email_match.start()] + spell_email_addresses(email_match.group()) + message_with_spelt_email[email_match.end():]
 
 
         # Prepare request headers
@@ -116,7 +114,7 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
         
         # Prepare request body
         body = {
-            "text": message.text,
+            "text": message_with_spelt_email,
             "voice_settings": voice.settings.dict() if voice.settings else None,
         }
         if self.model_id:
