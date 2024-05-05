@@ -165,23 +165,34 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
 
     def word_boundary_cb(self, evt, pool):
         pool.add(evt)
-
+        
+        
+    # Generates Speech Synthesis Markup Language (SSML) based on the input message and some configuration parameters
     def create_ssml(
             self, message: str, bot_sentiment: Optional[BotSentiment] = None
         ) -> str:
+            # Extract language code from voice name
             voice_language_code = self.synthesizer_config.voice_name[:5]
+            
+            # Initialize SSML root element
             ssml_root = ElementTree.fromstring(
                 f'<speak version="1.0" xmlns="https://www.w3.org/2001/10/synthesis" xml:lang="{voice_language_code}"></speak>'
             )
+            
+            # Add voice element with name and effect
             voice = ElementTree.SubElement(ssml_root, "voice")
             voice.set("name", self.voice_name)
             voice.set("effect", "eq_telecomhp8k")
+            
+            # Adjust voice language if not English
             if self.synthesizer_config.language_code != "en-US":
                 lang = ElementTree.SubElement(voice, "{%s}lang" % NAMESPACES.get(""))
                 lang.set("xml:lang", self.synthesizer_config.language_code)
                 voice_root = lang
             else:
                 voice_root = voice
+                
+            # Apply sentiment styling if available
             if bot_sentiment and bot_sentiment.emotion:
                 styled = ElementTree.SubElement(
                     voice, "{%s}express-as" % NAMESPACES.get("mstts")
@@ -192,6 +203,7 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
                 )  # Azure specific, it's a scale of 0-2
                 voice_root = styled
 
+            # Print original message and replace "Dr." with "doctor"
             print("PREVIOUS MESSAGE:")
             print(message)
             # Replacement for "dr." or "Dr." with "doctor"
@@ -202,6 +214,9 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
             # for normal sentences, it seems like the gap is > 500ms, so we're able to reduce it to 500ms
             # for very tiny sentences, the API hangs - so we heuristically only update the silence gap
             # if there is more than one word in the sentence
+            
+            
+            # Add a shorter silence gap between sentences if message has more than one word
             if " " in message:
                 silence = ElementTree.SubElement(
                     voice_root, "{%s}silence" % NAMESPACES.get("mstts")
@@ -210,6 +225,8 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
                 silence.set("type", "Tailing-exact")
 
             # This section catches when an email is returned and pronounces it as letters and slows it down
+            
+            # Handle email addresses by spelling them out
             email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
             emails = re.findall(email_regex, message)
 
@@ -217,13 +234,15 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
             # This will match patterns like "**T-A-N-M-A-Y" or "**T-A-N-M-A-Y"?' and similar
             # spelled_word_regex = r'["\']?\s*\*\*["\']?([A-Za-z](-[A-Za-z])+)["\']?'
 
+            # Configures prosodic features (rhythm, pitch, intonation, etc)
             prosody = ElementTree.SubElement(voice_root, "prosody")
             prosody.set("pitch", f"{self.pitch}%")
             prosody.set("rate", f"{self.rate}%")
 
+            # Split the message by whitespace to keep the structure
+            message_parts = re.split(r'(\s+)', message)  
+            
             # Process each part of the message
-            message_parts = re.split(r'(\s+)', message)  # Split the message by whitespace to keep the structure
-
             for part in message_parts:
                 ## below is to pronounce chiro as 'kai ro'.
                 chiro_regex = re.compile(r'^(chiro)([.,?!]*)$', re.IGNORECASE)
@@ -235,12 +254,15 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
                     if punctuation:  # If there's punctuation, directly append it after the phoneme element
                         punctuation_element = ElementTree.SubElement(prosody, "text")
                         punctuation_element.text = punctuation
+                        
+                # Catch email segments
                 elif part in emails:
                     # Split the email into user and domain parts
                     user, domain = part.split('@')
                     domain_parts = domain.split('.')
 
                     # User part spelled out with breaks
+                    # Handle special characters and breaks in user part
                     for char in user:
                         if char in ['-', '_', '.']:
                             # Pronounce special characters in user part
@@ -257,12 +279,13 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
                             char_element.text = char
                         ElementTree.SubElement(prosody, "break", {"time": "500ms"})  # Short break between characters
 
-                    # Insert "at"
+                    # Insert "at" inbetween the user part and the domain part
                     ElementTree.SubElement(prosody, "break", {"time": "500ms"})
                     at_text = ElementTree.SubElement(prosody, "text")
                     at_text.text = " at "
 
                     # Domain parts spelled out with breaks and "dot"
+                    # Handle special characters and breaks in domain part
                     for i, domain_part in enumerate(domain_parts):
                         for char in domain_part:
                             if char in ['-', '_', '.']:
@@ -279,7 +302,8 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
                                 char_element = ElementTree.SubElement(prosody, "say-as", {"interpret-as": "characters"})
                                 char_element.text = char
                             ElementTree.SubElement(prosody, "break", {"time": "500ms"})  # Short break between characters
-
+                            
+                        # Condition is true for all loop iterations execpt last iteration                            
                         if i < len(domain_parts) - 1:
                             # Add "dot" between domain parts
                             ElementTree.SubElement(prosody, "break", {"time": "500ms"})
@@ -298,7 +322,6 @@ class AzureSynthesizer(BaseSynthesizer[AzureSynthesizerConfig]):
                     # Process non-email, non-spelled-out parts as regular text
                     text_element = ElementTree.SubElement(prosody, "text")
                     text_element.text = part
-
             return ElementTree.tostring(ssml_root, encoding="unicode")
 
     def synthesize_ssml(self, ssml: str) -> speechsdk.AudioDataStream:
