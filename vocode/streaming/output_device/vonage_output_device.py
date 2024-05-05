@@ -5,7 +5,6 @@ import wave
 from pydub import AudioSegment
 import io
 
-
 from fastapi import WebSocket
 from vocode.streaming.models.audio_encoding import AudioEncoding
 from vocode.streaming.output_device.base_output_device import BaseOutputDevice
@@ -39,22 +38,39 @@ class VonageOutputDevice(BaseOutputDevice):
             self.output_speaker = SpeakerOutput.from_default_device(
                 sampling_rate=VONAGE_SAMPLING_RATE, blocksize=VONAGE_CHUNK_SIZE // 2
             )
-    
-    # WORKING!!!!
-    # def generate_sine_wave(self, frequency, length, rate):
-    #     """Generate a sine wave of a specific frequency and length at a given sample rate."""
-    #     t = np.linspace(0, length, int(rate * length), endpoint=False)
-    #     wave = np.sin(frequency * 2 * np.pi * t)
-    #     return (wave * np.iinfo(np.int16).max).astype(np.int16).tobytes()
+        self.background_audio_task = asyncio.create_task(self.play_background_audio())
 
-    # def mix_audio(self, foreground_chunk: bytes) -> bytes:
-    #     foreground = np.frombuffer(foreground_chunk, dtype=np.int16)
-    #     background_chunk = self.generate_sine_wave(440, 1, VONAGE_SAMPLING_RATE)
-    #     background = np.frombuffer(background_chunk[:len(foreground_chunk)], dtype=np.int16)
-    #     print(f"Foreground length: {len(foreground)}, Background length: {len(background)}")  # Debugging output
-    #     mixed_audio = (foreground * self.foreground_volume + background * self.background_volume)
-    #     return np.clip(mixed_audio, -32768, 32767).astype(np.int16).tobytes()
-    
+    async def process(self):
+        while self.active:
+            chunk = await self.queue.get()
+            # mixed_chunk = self.mix_audio(chunk)
+            if self.output_to_speaker:
+                self.output_speaker.consume_nonblocking(chunk)
+            for i in range(0, len(chunk), VONAGE_CHUNK_SIZE):
+                subchunk = chunk[i : i + VONAGE_CHUNK_SIZE]
+                if self.ws:
+                    await self.ws.send_bytes(subchunk)
+
+    async def play_background_audio(self):
+        print("STARTING BACKGROUND!!!!!!!!!!")
+        while True:
+            chunk = self.background_audio.readframes(VONAGE_CHUNK_SIZE)
+            if not chunk:
+                self.background_audio.rewind()
+                chunk = self.background_audio.readframes(VONAGE_CHUNK_SIZE)
+            mixed_chunk = self.mix_audio(chunk)
+            if self.output_to_speaker:
+                print('output to speaker')
+                self.output_speaker.consume_nonblocking(mixed_chunk)
+            for i in range(0, len(mixed_chunk), VONAGE_CHUNK_SIZE):
+                subchunk = mixed_chunk[i : i + VONAGE_CHUNK_SIZE]
+                if self.ws:
+                    await self.ws.send_bytes(subchunk)
+            # if self.ws:
+            #     # print('ws')
+            #     await self.ws.send_bytes(mixed_chunk)
+            await asyncio.sleep(0.01)  # Adjust the sleep time as needed
+
     def load_and_convert_background(self, path):
         audio = AudioSegment.from_file(path)
         audio = audio.set_frame_rate(VONAGE_SAMPLING_RATE).set_channels(1)
@@ -63,9 +79,8 @@ class VonageOutputDevice(BaseOutputDevice):
         buffer.seek(0)
         return wave.open(buffer, 'rb')
 
-
     def stereo_to_mono(self, stereo_data):
-    # Assumes stereo_data is an np.array of int16 type
+        # Assumes stereo_data is an np.array of int16 type
         return stereo_data.reshape((-1, 2)).mean(axis=1).astype(np.int16)
 
     def mix_audio(self, foreground_chunk: bytes) -> bytes:
@@ -82,30 +97,13 @@ class VonageOutputDevice(BaseOutputDevice):
         mixed_audio = (foreground * self.foreground_volume + background * self.background_volume)
         return np.clip(mixed_audio, -32768, 32767).astype(np.int16).tobytes()
 
-
-
-
-
-
-
-    async def process(self):
-        while self.active:
-            chunk = await self.queue.get()
-            mixed_chunk = self.mix_audio(chunk)
-            if self.output_to_speaker:
-                self.output_speaker.consume_nonblocking(mixed_chunk)
-            for i in range(0, len(mixed_chunk), VONAGE_CHUNK_SIZE):
-                subchunk = mixed_chunk[i : i + VONAGE_CHUNK_SIZE]
-                if self.ws:
-                    await self.ws.send_bytes(subchunk)
-
-
     def consume_nonblocking(self, chunk: bytes):
         self.queue.put_nowait(chunk)
 
     def maybe_send_mark_nonblocking(self, message_sent):
-            pass
+        pass
+
     def terminate(self):
         self.background_audio.close()
         self.process_task.cancel()
-
+        self.background_audio_task.cancel()
