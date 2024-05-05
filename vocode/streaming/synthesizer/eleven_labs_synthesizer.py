@@ -70,13 +70,15 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             converted_message = ""
             for char in message:
                 # Replace it if it exists in the dict. If not, make it upper case, surround in brackets, and seperate by commas.
-                converted_message += " [" + special_char_dict.get(char, char.upper()) + "],"
+                converted_message += " *" + special_char_dict.get(char, char.upper()) + "*."
             
             # Remove placed leading whitespace and trailing comma.
             converted_message = converted_message.removeprefix(" ").removesuffix(",")
             # If email had a trailing dot, add it back.
             if last_char_equals_dot:
                 converted_message += "."
+            
+            print(converted_message)
                     
             return converted_message
         
