@@ -649,6 +649,7 @@ class StreamingConversation(Generic[OutputDeviceType]):
         chunk_idx = 0
         seconds_spoken = 0
         async for chunk_result in synthesis_result.chunk_generator:
+            print("speaking")
             start_time = time.time()
             speech_length_seconds = seconds_per_chunk * (
                 len(chunk_result.chunk) / chunk_size
