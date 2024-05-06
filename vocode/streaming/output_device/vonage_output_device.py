@@ -1,6 +1,6 @@
 import asyncio
-import numpy as np
 from typing import Optional
+import numpy as np
 import wave
 from pydub import AudioSegment
 import io
@@ -27,11 +27,11 @@ class VonageOutputDevice(BaseOutputDevice):
         )
         self.ws = ws
         self.output_to_speaker = output_to_speaker
-        self.background_audio = self.load_and_prepare_background(background_audio_path)
+        self.background_audio_data = self.load_and_prepare_background(background_audio_path)
         self.background_volume = background_volume
         self.foreground_volume = 1.0 - background_volume
-        self.queue: asyncio.Queue[bytes] = asyncio.Queue()
-        self.process_task = asyncio.create_task(self.process_audio())
+        self.queue: asyncio.Queue[Optional[bytes]] = asyncio.Queue()
+        self.audio_play_task = asyncio.create_task(self.play_audio())
 
         if output_to_speaker:
             self.output_speaker = SpeakerOutput.from_default_device(
@@ -47,43 +47,47 @@ class VonageOutputDevice(BaseOutputDevice):
         wav_file = wave.open(buffer, 'rb')
         frames = wav_file.readframes(wav_file.getnframes())
         background = np.frombuffer(frames, dtype=np.int16)
-        return np.tile(background, 10)  # Loop the background audio sufficiently
+        return np.tile(background, 5)  # Ensure it's long enough for continuous looping
 
-    def mix_audio(self, foreground_chunk: bytes) -> bytes:
-        foreground = np.frombuffer(foreground_chunk, dtype=np.int16)
-        foreground_length = len(foreground)
-
-        # Get the required length of background audio
-        background = self.background_audio[:foreground_length]
-
-        # Mix audio
-        mixed_audio = (foreground * self.foreground_volume + background * self.background_volume)
-        return np.clip(mixed_audio, -32768, 32767).astype(np.int16).tobytes()
-
-    async def process_audio(self):
+    async def play_audio(self):
+        index = 0
         while True:
             try:
-                chunk = await asyncio.wait_for(self.queue.get(), timeout=0.5)
+                foreground_chunk = await asyncio.wait_for(self.queue.get(), timeout=0.1)
             except asyncio.TimeoutError:
-                # Use silent foreground when there is no actual foreground chunk
-                chunk = bytes(VONAGE_CHUNK_SIZE)
+                foreground_chunk = None
 
-            mixed_chunk = self.mix_audio(chunk)
-            # Play or send audio
+            if foreground_chunk:
+                foreground = np.frombuffer(foreground_chunk, dtype=np.int16)
+            else:
+                foreground = np.zeros(VONAGE_CHUNK_SIZE, dtype=np.int16)
+
+            # Proper background audio management
+            if index + len(foreground) >= len(self.background_audio_data):
+                index = 0  # Reset to start to prevent index overflow
+
+            background = self.background_audio_data[index:index + len(foreground)]
+            mixed_audio = (foreground * self.foreground_volume + background * self.background_volume)
+            mixed_audio_bytes = np.clip(mixed_audio, -32768, 32767).astype(np.int16).tobytes()
+
             if self.output_to_speaker:
-                self.output_speaker.consume_nonblocking(mixed_chunk)
+                self.output_speaker.consume_nonblocking(mixed_audio_bytes)
             if self.ws:
-                for i in range(0, len(mixed_chunk), VONAGE_CHUNK_SIZE):
-                    subchunk = mixed_chunk[i:i + VONAGE_CHUNK_SIZE]
-                    await self.ws.send_bytes(subchunk)
+                await self.send_chunked_bytes(mixed_audio_bytes)
 
-            # Roll the background buffer to simulate continuous play
-            self.background_audio = np.roll(self.background_audio, -VONAGE_CHUNK_SIZE)
+            index += len(foreground)
+            await asyncio.sleep(0.01)  # Sleep to manage timing
+
+    async def send_chunked_bytes(self, bytes_data):
+        for i in range(0, len(bytes_data), VONAGE_CHUNK_SIZE):
+            subchunk = bytes_data[i:i + VONAGE_CHUNK_SIZE]
+            await self.ws.send_bytes(subchunk)
+
     def consume_nonblocking(self, chunk: bytes):
         self.queue.put_nowait(chunk)
 
     def terminate(self):
-        self.process_task.cancel()
+        self.audio_play_task.cancel()
         if hasattr(self, 'background_audio'):
             self.background_audio.close()
 
