@@ -63,13 +63,32 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             last_char_equals_dot = message.endswith(".")
             message = message.removesuffix(".")
 
-            special_char_dict = {'-' : "dash", 
-                                '_' : "underscore", 
-                                '.' : "dot",
-                                '@' : "at"}
+            special_char_dict = {
+                '-' : 'dash', 
+                '_' : 'underscore', 
+                '.' : 'dot',
+                '@' : 'at',
+                '!' : 'exclamation mark',
+                '#' : 'hash sign',
+                '$' : 'dollar sign',
+                '%' : 'percent sign',
+                '&' : 'ampersand',
+                "'" : 'apostrophe',
+                '*' : 'asterisk',
+                '+' : 'plus sign',
+                '/' : 'forward slash',
+                '=' : 'equals sign',
+                '?' : 'question mark',
+                '^' : 'caret',
+                '`' : 'backtick',
+                '{' : 'left curly brace',
+                '|' : 'vertical bar',
+                '}' : 'right curly brace',
+                '~' : 'tilde'
+            }
             converted_message = ""
             for char in message:
-                # Replace it if it exists in the dict. If not, make it upper case, surround in brackets, and seperate by commas.
+                # Replace it if it exists in the dict and add additional formatting.
                 converted_message += " [" + special_char_dict.get(char, char.upper()) + "],"
             
             # Remove placed leading whitespace and trailing comma.
@@ -77,6 +96,8 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             # If email had a trailing dot, add it back.
             if last_char_equals_dot:
                 converted_message += "."
+            
+            print("CONVERTED EMAIL SPEECH: ", converted_message)
                     
             return converted_message
         
@@ -102,12 +123,15 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
 
         # Email checks
         message_with_spelt_email = message.text
-        email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'   
+        email_regex = r'\b[A-Za-z0-9\!\$\#\%\&\'\*\+\/\=\?\^\`\{\}\|\~._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'   
         # Loops over all email match objects found. Should not occur but problems arise if multiple emails share the same message.
         for email_match in re.finditer(email_regex, message_with_spelt_email):
             # Replace the portion of the message at the match indices with the converted email address.
-            message_with_spelt_email = message_with_spelt_email[:email_match.start()] + spell_email_addresses(email_match.group()) + message_with_spelt_email[email_match.end():]
-
+            message_with_spelt_email = (
+                message_with_spelt_email[:email_match.start()].removesuffix("\"") + 
+                spell_email_addresses(email_match.group()) + 
+                message_with_spelt_email[email_match.end():].removeprefix("\"")
+            )
 
         # Prepare request headers
         headers = {"xi-api-key": self.api_key}

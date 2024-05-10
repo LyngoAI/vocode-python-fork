@@ -47,8 +47,8 @@ async def collate_response_async(
             if prev_ends_with_money and token_starts_with_whitespace:
                 yield buffer.strip()
                 buffer = ""
-            # Return if the current token has leading whitespace and the pre-buffer contains the end of a sentence.
-            elif token_starts_with_whitespace and bool(re.findall(sentence_endings_pattern, buffer)):
+            # Return if the current token has leading whitespace and the end of the pre-buffer contains a sentence ending pattern.
+            elif token_starts_with_whitespace and bool(re.findall(sentence_endings_pattern, buffer[-1:])):
                 to_return = buffer.strip()
                 if to_return:
                     yield to_return
