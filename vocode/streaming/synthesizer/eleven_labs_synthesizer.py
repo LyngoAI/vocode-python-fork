@@ -113,25 +113,28 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
             
         # Construct API endpoint URL
         url = ELEVEN_LABS_BASE_URL + f"text-to-speech/{self.voice_id}"
-
+        
         if self.experimental_streaming:
             url += "/stream"
-
-        if self.optimize_streaming_latency:
-            url += f"?optimize_streaming_latency={self.optimize_streaming_latency}"
-
-
+        
         # Email checks
         message_with_spelt_email = message.text
         email_regex = r'\b[A-Za-z0-9\!\$\#\%\&\'\*\+\/\=\?\^\`\{\}\|\~._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'   
-        # Loops over all email match objects found. Should not occur but problems arise if multiple emails share the same message.
-        for email_match in re.finditer(email_regex, message_with_spelt_email):
+        email_match = re.search(email_regex, message_with_spelt_email)
+        
+        if email_match:
             # Replace the portion of the message at the match indices with the converted email address.
             message_with_spelt_email = (
                 message_with_spelt_email[:email_match.start()].removesuffix("\"") + 
                 spell_email_addresses(email_match.group()) + 
                 message_with_spelt_email[email_match.end():].removeprefix("\"")
             )
+            # Maximise quality for email messages
+            url += "?optimize_streaming_latency=0"
+            
+
+        elif self.optimize_streaming_latency:
+            url += f"?optimize_streaming_latency={self.optimize_streaming_latency}"
 
         # Prepare request headers
         headers = {"xi-api-key": self.api_key}
@@ -151,6 +154,8 @@ class ElevenLabsSynthesizer(BaseSynthesizer[ElevenLabsSynthesizerConfig]):
 
         # Initialize aiohttp session
         session = self.aiohttp_session
+        
+        print(url)
 
         # Make asynchronous POST request to API endpoint
         response = await session.request(
