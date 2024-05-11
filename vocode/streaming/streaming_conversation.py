@@ -666,7 +666,8 @@ class StreamingConversation(Generic[OutputDeviceType]):
             if chunk_idx == 0:
                 if started_event:
                     started_event.set()
-            self.output_device.consume_nonblocking(chunk_result.chunk)
+            # NOTE: this will break other output devices
+            self.output_device.consume_nonblocking(chunk_result.chunk, chunk_result.is_last_chunk)
             end_time = time.time()
             await asyncio.sleep(
                 max(
