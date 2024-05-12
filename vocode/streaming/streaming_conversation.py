@@ -124,7 +124,7 @@ class StreamingConversation(Generic[OutputDeviceType]):
                 self.conversation.logger.info("Ignoring empty transcription")
                 return
             if transcription.is_final:
-                self.conversation.logger.debug(
+                self.conversation.logger.info(
                     "Got transcription: {}, confidence: {}".format(
                         transcription.message, transcription.confidence
                     )

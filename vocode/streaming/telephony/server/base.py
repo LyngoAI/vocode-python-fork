@@ -102,13 +102,37 @@ class TelephonyServer:
         self.router.add_api_route("/recordings/{conversation_id}", self.recordings, methods=["GET", "POST"])
         self.logger.info(f"Set up recordings endpoint at https://{self.base_url}/recordings/{{conversation_id}}")
  
-    def events(self, request: Request):
+    async def events(self, request: Request):
+        # Add logs to see what is getting sent to this endpoint
+        content_type = request.headers.get("Content-Type", "").lower()
+        body = None
+
+        try:
+            if "application/json" in content_type:
+                # If JSON is expected
+                body = await request.json()
+            elif "application/x-www-form-urlencoded" in content_type:
+                # If the body is a form (URL-encoded)
+                form = await request.form()
+                body = dict(form)
+            else:
+                # Fallback: read the raw body data
+                body = await request.body()
+                body = body.decode('utf-8') if body else "Empty body"
+                
+            self.logger.info(f"Body: {body}")
+        except Exception as e:
+            # Log the error for unexpected data
+            self.logger.warning(f"Error reading body: {e}")
+            body = "Could not parse body"
+
         return Response()
 
     async def recordings(self, request: Request, conversation_id: str):
         recording_url = (await request.json())["recording_url"]
         if self.events_manager is not None and recording_url is not None:
             self.events_manager.publish_event(RecordingEvent(recording_url=recording_url, conversation_id=conversation_id))
+            
         return Response()
 
     def create_inbound_route(
