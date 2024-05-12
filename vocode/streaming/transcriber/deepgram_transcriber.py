@@ -62,6 +62,7 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
         self.is_ready = False
         self.logger = logger or logging.getLogger(__name__)
         self.audio_cursor = 0.0
+        self.last_transcription = None  # Keep track of last received transcription
 
     async def _run_loop(self):
         restarts = 0
@@ -104,7 +105,7 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
             "sample_rate": self.transcriber_config.sampling_rate,
             "channels": 1,
             "interim_results": "true",
-            # "smart_format": "true"
+            "utterance_end_ms": "1000",  # Set a desired gap in milliseconds,
         }
         extra_params = {}
         if self.transcriber_config.language:
@@ -123,8 +124,22 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
             == EndpointingType.PUNCTUATION_BASED
         ):
             extra_params["punctuate"] = "true"
+
         url_params.update(extra_params)
-        return f"wss://api.deepgram.com/v1/listen?{urlencode(url_params)}"
+        # Encode non-keyword URL parameters
+        non_keyword_query_string = urlencode({k: v for k, v in url_params.items() if k != 'keywords'}, doseq=True)
+
+        # Manually construct the keywords part of the query string (need to do this to not encode : character for keywords)
+        if self.transcriber_config.keywords:
+            keyword_query_parts = ["keywords=" + kw for kw in self.transcriber_config.keywords]
+            keyword_query_string = "&".join(keyword_query_parts)
+            full_query_string = f"{non_keyword_query_string}&{keyword_query_string}"
+        else:
+            full_query_string = non_keyword_query_string
+
+        full_url = f"wss://api.deepgram.com/v1/listen?{full_query_string}"
+        self.logger.info(f"Deepgram URL: {full_url}")
+        return full_url
 
     def is_speech_final(
         self, current_buffer: str, deepgram_response: dict, time_silent: float
@@ -198,6 +213,8 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                 num_buffer_utterances = 1
                 time_silent = 0
                 transcript_cursor = 0.0
+                speech_final_received = False  # Track if speech_final has been received
+
                 while not self._ended:
                     try:
                         msg = await ws.recv()
@@ -205,10 +222,33 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                         self.logger.debug(f"Got error {e} in Deepgram receiver")
                         break
                     data = json.loads(msg)
-                    if (
-                        not "is_final" in data
-                    ):  # means we've finished receiving transcriptions
-                        break
+                    # print(data)
+
+                    # Handle UtteranceEnd
+                    if data.get("type") == "UtteranceEnd":
+                        # Only process if no speech_final has been received just before
+                        if not speech_final_received:
+                            if buffer:
+                                self.output_queue.put_nowait(
+                                    Transcription(
+                                        message=buffer,
+                                        confidence=buffer_avg_confidence,
+                                        is_final=True,
+                                    )
+                                )
+                                buffer = ""
+                                buffer_avg_confidence = 0
+                                num_buffer_utterances = 1
+                                time_silent = 0
+                        continue
+
+                    # Reset speech_final_received flag for every new real-time message that isn't UtteranceEnd
+                    speech_final_received = False
+
+                    # Process regular messages
+                    if "is_final" not in data:
+                        continue
+
                     cur_max_latency = self.audio_cursor - transcript_cursor
                     transcript_cursor = data["start"] + data["duration"]
                     cur_min_latency = self.audio_cursor - transcript_cursor
@@ -222,8 +262,7 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                     max_latency_hist.record(cur_max_latency)
                     min_latency_hist.record(max(cur_min_latency, 0))
 
-                    is_final = data["is_final"]
-                    speech_final = self.is_speech_final(buffer, data, time_silent)
+                    is_final = data["speech_final"]
                     top_choice = data["channel"]["alternatives"][0]
                     confidence = top_choice["confidence"]
 
@@ -238,6 +277,8 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                             ) * (num_buffer_utterances / (num_buffer_utterances + 1))
                         num_buffer_utterances += 1
 
+                    speech_final = self.is_speech_final(buffer, data, time_silent)
+
                     if speech_final:
                         self.output_queue.put_nowait(
                             Transcription(
@@ -250,6 +291,7 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
                         buffer_avg_confidence = 0
                         num_buffer_utterances = 1
                         time_silent = 0
+                        speech_final_received = True  # Set flag when speech_final=true has been processed
                     elif top_choice["transcript"] and confidence > 0.0:
                         self.output_queue.put_nowait(
                             Transcription(
