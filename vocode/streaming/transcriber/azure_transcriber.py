@@ -41,6 +41,7 @@ class AzureTranscriber(BaseThreadAsyncTranscriber[AzureTranscriberConfig]):
             )
 
         import azure.cognitiveservices.speech as speechsdk
+        self.speechsdk = speechsdk
 
         self.push_stream = PushAudioInputStream(format)
 
@@ -79,11 +80,21 @@ class AzureTranscriber(BaseThreadAsyncTranscriber[AzureTranscriberConfig]):
         self.is_ready = False
 
     def recognized_sentence_final(self, evt):
+        print(evt)
+        result = self.speechsdk.AutoDetectSourceLanguageResult(evt.result)
+        detected_language = result.language
+        if detected_language:
+            print(f"Recognized language: {detected_language}")
         self.output_janus_queue.sync_q.put_nowait(
             Transcription(message=evt.result.text, confidence=1.0, is_final=True)
         )
 
     def recognized_sentence_stream(self, evt):
+        print(evt)
+        result = self.speechsdk.AutoDetectSourceLanguageResult(evt.result)
+        detected_language = result.language
+        if detected_language:
+            print(f"Recognized language: {detected_language}")
         self.output_janus_queue.sync_q.put_nowait(
             Transcription(message=evt.result.text, confidence=1.0, is_final=False)
         )
