@@ -37,42 +37,32 @@ async def collate_response_async(
     function_name_buffer = ""
     function_args_buffer = ""
     prev_ends_with_money = False
-    
+    buffer = ""
     async for token in gen:
         if not token:
             continue
         if isinstance(token, str):
-            token_starts_with_whitespace = token.startswith(" ")
-            
-            if prev_ends_with_money and token_starts_with_whitespace:
-                yield buffer.strip()
-                buffer = ""
-            # Return if the current token has leading whitespace and the pre-buffer contains the end of a sentence.
-            elif token_starts_with_whitespace and bool(re.findall(sentence_endings_pattern, buffer)):
-                to_return = buffer.strip()
-                if to_return:
-                    yield to_return
-                buffer = ""
-
-            buffer += token
-                
-            possible_list_item = bool(re.match(r"^\d+[ .]", buffer))
-            ends_with_money = bool(re.findall(r"\$\d+.$", buffer))
-            token_ends_sentence = bool(re.findall(list_item_ending_pattern if possible_list_item else sentence_endings_pattern, token))
-            
-            # Only allow buffers to return if the current token has leading whitespace to avoid streaming partial emails.
-            if token_ends_sentence and not ends_with_money and token_starts_with_whitespace:
-                to_return = buffer.strip()
-                if to_return:
-                    yield to_return
-                buffer = ""
-            prev_ends_with_money = ends_with_money
+            splitters = (".", ",", "?", "!", ";", ":", "—", "-", "(", ")", "[", "]", "}", " ")
+            if token is None:
+                # print("None")
+                continue
+            elif buffer.endswith(splitters):
+                # print("ends")
+                yield buffer + " "
+                buffer = token
+            elif token.startswith(splitters):
+                # print("starts")
+                yield buffer + token[0] + " "
+                buffer = token[1:]
+            else:
+                # print("else")
+                buffer += token
         elif isinstance(token, FunctionFragment):
             function_name_buffer += token.name
             function_args_buffer += token.arguments
-    to_return = buffer.strip()
-    if to_return:
-        yield to_return
+    # to_return = buffer.strip()
+    if buffer:
+        yield buffer + " "
     if function_name_buffer and get_functions:
         yield FunctionCall(name=function_name_buffer, arguments=function_args_buffer)
         

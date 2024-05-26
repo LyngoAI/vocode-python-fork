@@ -57,8 +57,8 @@ class ChatGPTAgent(RespondAgent[ChatGPTAgentConfig]):
                 raise ValueError("OPENAI_API_KEY must be set in environment or passed in")
             self.aclient = AsyncOpenAI(api_key=api_key)
 
-        if not openai.api_key:
-            raise ValueError("OPENAI_API_KEY must be set in environment or passed in")
+        # if not openai.api_key:
+        #     raise ValueError("OPENAI_API_KEY must be set in environment or passed in")
         self.first_response = (
             self.create_first_response(agent_config.expected_first_prompt)
             if agent_config.expected_first_prompt

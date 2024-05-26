@@ -83,7 +83,7 @@ class LyngoChatGPTAgent(RespondAgent[LyngoChatGPTAgentConfig]):
         # print("FOUND PATIENT!!")
         self.logger.info("Updated prompt...")
         self.agent_config.prompt_preamble = self.agent_config.prompt_preamble.format(patient_data=patient_data)
-        self.logger.info(self.agent_config.prompt_preamble)
+        # self.logger.info(self.agent_config.prompt_preamble)
         # print(self.agent_config.prompt_preamble)
         # asyncio.get_event_loop().stop()
         return True

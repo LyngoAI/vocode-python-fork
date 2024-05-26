@@ -288,19 +288,31 @@ class StreamingConversation(Generic[OutputDeviceType]):
                     ):
                         await self.conversation.filler_audio_worker.wait_for_filler_audio_to_finish()
 
-                self.conversation.logger.debug("Synthesizing speech for message")
                 synthesis_result = await self.conversation.synthesizer.create_speech(
                     agent_response_message.message,
                     self.chunk_size,
                     bot_sentiment=self.conversation.bot_sentiment,
                 )
+                print("post synthesis")
+                # await asyncio.sleep(1)
+                # async for chunk in synthesis_result.chunk_generator:
+                #     print("in chuk output")
+                #     # self.output_queue.put_nowait(chunk)
                 self.produce_interruptible_agent_response_event_nonblocking(
                     (agent_response_message.message, synthesis_result),
                     is_interruptible=item.is_interruptible,
                     agent_response_tracker=item.agent_response_tracker,
-                )
-            except asyncio.CancelledError:
+                    )
+
+                # self.produce_interruptible_agent_response_event_nonblocking(
+                #     (agent_response_message.message, synthesis_result),
+                #     is_interruptible=item.is_interruptible,
+                #     agent_response_tracker=item.agent_response_tracker,
+                # )
+            except asyncio.CancelledError as e:
+                print("cancelled error: %s" % e)
                 pass
+
 
     class SynthesisResultsWorker(InterruptibleAgentResponseWorker):
         """Plays SynthesisResults from the output queue on the output device"""
@@ -507,7 +519,7 @@ class StreamingConversation(Generic[OutputDeviceType]):
             self.track_bot_sentiment_task = asyncio.create_task(
                 self.track_bot_sentiment()
             )
-        self.check_for_idle_task = asyncio.create_task(self.check_for_idle())
+        # self.check_for_idle_task = asyncio.create_task(self.check_for_idle())
         if len(self.events_manager.subscriptions) > 0:
             self.events_task = asyncio.create_task(self.events_manager.start())
 
@@ -650,10 +662,10 @@ class StreamingConversation(Generic[OutputDeviceType]):
         seconds_spoken = 0
         async for chunk_result in synthesis_result.chunk_generator:
             start_time = time.time()
-            speech_length_seconds = seconds_per_chunk * (
-                len(chunk_result.chunk) / chunk_size
-            )
-            seconds_spoken = chunk_idx * seconds_per_chunk
+            # speech_length_seconds = seconds_per_chunk * (
+            #     len(chunk_result.chunk) / chunk_size
+            # )
+            # seconds_spoken = chunk_idx * seconds_per_chunk
             if stop_event.is_set():
                 self.logger.debug(
                     "Interrupted, stopping text to speech after {} chunks".format(
@@ -667,19 +679,19 @@ class StreamingConversation(Generic[OutputDeviceType]):
                 if started_event:
                     started_event.set()
             # NOTE: this will break other output devices
-            self.output_device.consume_nonblocking(chunk_result.chunk, chunk_result.is_last_chunk)
+            self.output_device.consume_nonblocking(chunk_result)
             end_time = time.time()
-            await asyncio.sleep(
-                max(
-                    speech_length_seconds
-                    - (end_time - start_time)
-                    - self.per_chunk_allowance_seconds,
-                    0,
-                )
-            )
-            self.logger.debug(
-                "Sent chunk {} with size {}".format(chunk_idx, len(chunk_result.chunk))
-            )
+            # await asyncio.sleep(
+            #     max(
+            #         speech_length_seconds
+            #         - (end_time - start_time)
+            #         - self.per_chunk_allowance_seconds,
+            #         0,
+            #     )
+            # )
+            # self.logger.debug(
+            #     "Sent chunk {} with size {}".format(chunk_idx, len(chunk_result.chunk))
+            # )
             self.mark_last_action_timestamp()
             chunk_idx += 1
             seconds_spoken += seconds_per_chunk
@@ -703,9 +715,9 @@ class StreamingConversation(Generic[OutputDeviceType]):
         self.events_manager.publish_event(
             TranscriptCompleteEvent(conversation_id=self.id, transcript=self.transcript)
         )
-        if self.agent.get_patient_details_task:
-            self.logger.debug("Terminating get_patient_details_task Task")
-            self.agent.get_patient_details_task.cancel()
+        # if self.agent.get_patient_details_task:
+        #     self.logger.debug("Terminating get_patient_details_task Task")
+        #     self.agent.get_patient_details_task.cancel()
         if self.check_for_idle_task:
             self.logger.debug("Terminating check_for_idle Task")
             self.check_for_idle_task.cancel()
