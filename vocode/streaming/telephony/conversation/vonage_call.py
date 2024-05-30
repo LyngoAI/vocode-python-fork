@@ -118,7 +118,6 @@ class VonageCall(Call[VonageOutputDevice]):
                 break
         if not disconnected:
             await ws.close()
-        await self.config_manager.delete_config(self.id)
         await self.tear_down()
 
     def receive_audio(self, chunk: bytes):
