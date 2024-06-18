@@ -81,6 +81,8 @@ class LyngoChatGPTAgent(RespondAgent[LyngoChatGPTAgentConfig]):
                                                                                 self.agent_config.customer)
         # Update agent system prompt
         self.agent_config.prompt_preamble = self.agent_config.prompt_preamble.format(patient_data=patient_data)
+        self.logger.info("UPDATED PROMPT")
+        self.logger.info(self.agent_config.prompt_preamble)
         return True
 
     def get_country_code(self, timezone):
