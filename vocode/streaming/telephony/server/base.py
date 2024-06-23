@@ -5,7 +5,7 @@ import os
 from typing import List, Optional
 from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, Field
-from utils.sms import SmsManager
+from utils.smsManager import SmsManager
 from vocode.streaming.agent.factory import AgentFactory
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import RecordingEvent
