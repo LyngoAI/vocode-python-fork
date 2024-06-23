@@ -1,9 +1,11 @@
 import abc
 from functools import partial
 import logging
+import os
 from typing import List, Optional
 from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, Field
+from utils.sms import SmsManager
 from vocode.streaming.agent.factory import AgentFactory
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import RecordingEvent
@@ -60,6 +62,7 @@ class VonageAnswerRequest(BaseModel):
     uuid: str
 
 
+
 class TelephonyServer:
     def __init__(
         self,
@@ -101,6 +104,15 @@ class TelephonyServer:
 
         self.router.add_api_route("/recordings/{conversation_id}", self.recordings, methods=["GET", "POST"])
         self.logger.info(f"Set up recordings endpoint at https://{self.base_url}/recordings/{{conversation_id}}")
+        
+        smsManager = SmsManager()
+        
+        self.router.add_api_route("/sms/inbound_sms", smsManager.inbound_sms, methods=["GET", "POST"])
+        self.logger.info(f"Set up sms endpoint at https://{self.base_url}/sms/inbound_sms")
+        
+        self.router.add_api_route("/sms/delivery_receipts", smsManager.delivery_receipts, methods=["GET", "POST"])
+        self.logger.info(f"Set up sms endpoint at https://{self.base_url}/sms/delivery_receipts")
+ 
  
     def events(self, request: Request):
         return Response()
@@ -110,6 +122,7 @@ class TelephonyServer:
         if self.events_manager is not None and recording_url is not None:
             self.events_manager.publish_event(RecordingEvent(recording_url=recording_url, conversation_id=conversation_id))
         return Response()
+
 
     def create_inbound_route(
         self,
