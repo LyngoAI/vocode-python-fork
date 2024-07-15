@@ -5,7 +5,7 @@ import os
 from typing import List, Optional
 from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, Field
-from utils.smsManager import SmsManager
+from utils.sms import SmsManager
 from vocode.streaming.agent.factory import AgentFactory
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import RecordingEvent
@@ -74,6 +74,7 @@ class TelephonyServer:
         synthesizer_factory: SynthesizerFactory = SynthesizerFactory(),
         events_manager: Optional[EventsManager] = None,
         logger: Optional[logging.Logger] = None,
+        sms_manager: SmsManager = SmsManager
     ):
         self.base_url = base_url
         self.logger = logger or logging.getLogger(__name__)
@@ -105,13 +106,11 @@ class TelephonyServer:
         self.router.add_api_route("/recordings/{conversation_id}", self.recordings, methods=["GET", "POST"])
         self.logger.info(f"Set up recordings endpoint at https://{self.base_url}/recordings/{{conversation_id}}")
         
-        smsManager = SmsManager()
+        self.router.add_api_route("/sms/inbound_sms", sms_manager.inbound_sms, methods=["GET", "POST"])
+        self.logger.info(f"Set up inbound sms endpoint at https://{self.base_url}/sms/inbound_sms")
         
-        self.router.add_api_route("/sms/inbound_sms", smsManager.inbound_sms, methods=["GET", "POST"])
-        self.logger.info(f"Set up sms endpoint at https://{self.base_url}/sms/inbound_sms")
-        
-        self.router.add_api_route("/sms/delivery_receipts", smsManager.delivery_receipts, methods=["GET", "POST"])
-        self.logger.info(f"Set up sms endpoint at https://{self.base_url}/sms/delivery_receipts")
+        self.router.add_api_route("/sms/delivery_receipts", sms_manager.delivery_receipts, methods=["GET", "POST"])
+        self.logger.info(f"Set up sms delivery receipt endpoint at https://{self.base_url}/sms/delivery_receipts")
  
  
     def events(self, request: Request):
