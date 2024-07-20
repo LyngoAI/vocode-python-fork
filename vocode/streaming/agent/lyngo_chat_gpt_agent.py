@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import openai
@@ -79,8 +80,14 @@ class LyngoChatGPTAgent(RespondAgent[LyngoChatGPTAgentConfig]):
                                                                                 self.agent_config.customer.timezone,
                                                                                 self.agent_config.conversation_id,
                                                                                 self.agent_config.customer)
+        
+        numbers = re.findall(r'\d+', phone_number)
+        concatenated_numbers = ''.join(numbers)
+        last_three_digits = concatenated_numbers[-3:]
+
+        phone_number_string = f"The callers phone number is {phone_number}. The last three digits are {last_three_digits}"
         # Update agent system prompt
-        self.agent_config.prompt_preamble = self.agent_config.prompt_preamble.format(patient_data=patient_data)
+        self.agent_config.prompt_preamble = self.agent_config.prompt_preamble.format(patient_data=patient_data, phone_number_string=phone_number_string)
         self.logger.info("UPDATED PROMPT")
         self.logger.info(self.agent_config.prompt_preamble)
         return True
