@@ -3,7 +3,6 @@ import logging
 from typing import Optional
 
 from services.redis import CustomRedisConfigManager
-from utils.Sms import Sms
 
 from vocode import getenv
 from vocode.streaming.agent.factory import AgentFactory
@@ -122,11 +121,6 @@ class VonageCall(Call[VonageOutputDevice]):
                 break
         if not disconnected:
             await ws.close()
-        
-        custom_config = await CustomRedisConfigManager().get_config(self.id)
-        if custom_config.new_patient == True:
-            sms = Sms(self.id)
-            await sms.send_email_request()
             
         await self.config_manager.delete_config(self.id)
         await self.tear_down()
