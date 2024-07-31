@@ -2,8 +2,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 import logging
 from typing import Optional
 
-from services.redis import CustomRedisConfigManager
-
 from vocode import getenv
 from vocode.streaming.agent.factory import AgentFactory
 from vocode.streaming.models.agent import AgentConfig
