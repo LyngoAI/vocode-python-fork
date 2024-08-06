@@ -21,7 +21,7 @@ from vocode.streaming.models.transcriber import (
     TimeEndpointingConfig,
 )
 from vocode.streaming.models.audio_encoding import AudioEncoding
-
+from vocode.streaming.utils.deepgram_keyword_encoder import urlencode_keywords
 
 PUNCTUATION_TERMINATORS = [".", "!", "?"]
 NUM_RESTARTS = 5
@@ -115,8 +115,6 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
             extra_params["tier"] = self.transcriber_config.tier
         if self.transcriber_config.version:
             extra_params["version"] = self.transcriber_config.version
-        if self.transcriber_config.keywords:
-            extra_params["keywords"] = self.transcriber_config.keywords
         if (
             self.transcriber_config.endpointing_config
             and self.transcriber_config.endpointing_config.type
@@ -124,7 +122,13 @@ class DeepgramTranscriber(BaseAsyncTranscriber[DeepgramTranscriberConfig]):
         ):
             extra_params["punctuate"] = "true"
         url_params.update(extra_params)
-        return f"wss://api.deepgram.com/v1/listen?{urlencode(url_params)}"
+        encoded_url = f"wss://api.deepgram.com/v1/listen?{urlencode(url_params)}"
+        if self.transcriber_config.keywords:
+            # extra_params["keywords"] = self.transcriber_config.keywords
+            encoded_keywords = urlencode_keywords(self.transcriber_config.keywords)
+            encoded_url += f"&{encoded_keywords}"
+        print(encoded_url)
+        return encoded_url
 
     def is_speech_final(
         self, current_buffer: str, deepgram_response: dict, time_silent: float
